@@ -145,10 +145,26 @@ def get_report_items(burp_xml):
         report_items[report_item.find('serialNumber')]['response']['base64'] = report_item.find('requestresponse/response').attrib['base64']
     return report_items
 
+def transform_report(vulns):
+    """Transform dictionary to format that can be used for generating reports"""
+
+    report = {}
+
+    for v in vulns:
+        if vulns[v]['name'] not in report.keys():
+            report[vulns[v]['name']] = [(vulns[v]['host_name'],vulns[v]['location'])]
+        else:
+            if (vulns[v]['host_name'],vulns[v]['location']) not in report[vulns[v]['name']]:
+                report[vulns[v]['name']].append((vulns[v]['host_name'],vulns[v]['location']))
+
+    return report
+
+
 
 def standalone():
     """Run Burp Suite Parser as standalone script"""
 
+    # TODO change handling so it is the same after single file or directory selected
     if args.xml:
         burp_file = parse_file(args.xml.name)
 
@@ -156,6 +172,13 @@ def standalone():
             vulns = get_report_items(burp_file)
         if args.vulns or args.md5:
             print_vulns(vulns)
+        if args.listing:
+            report = transform_report(vulns)
+            for r in report:
+                print info + "%s" % r
+                for i in report[r]:
+                    print "\t" + note + " %s%s" %(i[0], i[1])
+
     if args.directory:
         files = parse_directory()
         if files is not None:
@@ -182,6 +205,7 @@ if __name__ == '__main__':
         parser.add_argument('-m', '--md5', action='store_true', default=False, help="Print MD5 hash of vulnerability")
         parser.add_argument('-v', '--verbose', action='store_true', default=False, help="Verbose Output")
         parser.add_argument('-vv', '--vverbose', action='store_true', default=False, help="More Verbose Output to include HTTP Request and Response")
+        parser.add_argument('-l', '--listing', action='store_true', default=False, help="Vulnerability Listing by Vulnerability")
         args = parser.parse_args()
 
         standalone()
