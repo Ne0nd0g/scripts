@@ -116,7 +116,6 @@ def parse_directory():
         return files
 
 
-
 def get_report_items(burp_xml):
     """Get Burp report findings"""
 
@@ -145,6 +144,7 @@ def get_report_items(burp_xml):
         report_items[report_item.find('serialNumber')]['response']['base64'] = report_item.find('requestresponse/response').attrib['base64']
     return report_items
 
+
 def transform_report(vulns):
     """Transform dictionary to format that can be used for generating reports"""
 
@@ -158,7 +158,6 @@ def transform_report(vulns):
                 report[vulns[v]['name']].append((vulns[v]['host_name'],vulns[v]['location']))
 
     return report
-
 
 
 def standalone():
@@ -189,6 +188,12 @@ def standalone():
                         vulns = get_report_items(burp_file)
                     if args.vulns or args.md5:
                         print_vulns(vulns)
+                    if args.listing:
+                        report = transform_report(vulns)
+                        for r in report:
+                            print info + "%s" % r
+                            for i in report[r]:
+                                print "\t" + note + " %s%s" %(i[0], i[1])
 
 
 if __name__ == '__main__':
