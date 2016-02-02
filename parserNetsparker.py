@@ -30,19 +30,17 @@ note = "\033[0;0;33m-\033[0m"
 warn = "\033[0;0;31m!\033[0m"
 info = "\033[0;0;36mi\033[0m"
 question = "\033[0;0;37m?\033[0m"
+VERBOSE = False
+CVE = False
+MD5 = False
+VULNS = False
 
-# Parse command line arguments
-parser = argparse.ArgumentParser()
-parser.add_argument('-X', '--xml', type=argparse.FileType('r'), help="Netsparker XML file")
-parser.add_argument('-D', '--directory', help="Directory containing Netsparker XML files")
-parser.add_argument('-v', '--verbose', action='store_true', default=False, help="Print verbose information")
-parser.add_argument('-m', '--md5', action='store_true', default=False, help="Print MD5 hash of vulnerability")
-args = parser.parse_args()
 
 def read_xml(xml_file):
     """Parse file and create xml root element"""
 
-    print "[" + info + "]Parsing: ", xml_file
+    if VERBOSE:
+        print "[" + info + "]Parsing: ", xml_file
     xml_tree = ElementTree.parse(xml_file)
     xml = xml_tree.getroot()
 
@@ -50,6 +48,7 @@ def read_xml(xml_file):
         return xml
     else:
         return None
+
 
 def read_directory():
 
@@ -65,36 +64,56 @@ def read_directory():
 
     return files
 
+
 def parse(xml):
     """Main Netsparker Parse Function"""
 
     netsparker = {}  # Dictionary to hold all parsed data
 
-    #Verify Netsparker XML
+    # Verify Netsparker XML
     if xml.tag != 'netsparker':
         print "[" + warn + "The specefied file does not appear to be a Netsparker XML"
         print "[" + warn + "The root element is: " + xml.tag
         sys.exit()
     target = xml.findtext('./target/url')
-    print "[" + note + "]Target: ", target
+    if VERBOSE or CVE or MD5 or VULNS:
+        print "[" + note + "]Target: ", target
     if target is not None:
         netsparker[target] = {'target_url': target, 'vulnerabilities': {}}
 
     for vulnerability in xml.findall('./vulnerability'):
-        #Gather Important Data
+        # Gather Important Data
         url = vulnerability.findtext('./url')
         type = vulnerability.findtext('./type')
         severity = vulnerability.findtext('./severity')
         certainty = vulnerability.findtext('./certainty')
         m = hashlib.md5()
         m.update(type)
-        md5 = m.hexdigest()
-        if args.md5:
-            print "\t[" + info + "]" + type + "\t" + md5.upper()
-        else:
-            print "\t[" + info + "]" + type
+        md5 = m.hexdigest().upper()
+        if MD5:
+            print "\t[" + warn + "][%s]\t%s" % (md5, type)
+        elif VULNS or CVE or VERBOSE:
+            print "\t[" + warn + "]" + type
 
-        #Add Data to Dictionary
+        # Version Information
+        # TODO add to Netsparker Dictionary
+        if vulnerability.findall('./extrainformation') is not None:
+            for z in vulnerability.findall('./extrainformation/info'):
+                if VERBOSE:
+                    print "\t\t[" + info + "]%s: %s" % (z.get('name'), z.text)
+
+        # Vulnerabilities listed inside vulnerabilities i.e out of date openssl
+        # TODO add to Netsparker Dictionary
+        if vulnerability.findall('./knownvulnerabilities') is not None:
+            for v in vulnerability.findall('./knownvulnerabilities/knownvulnerability'):
+                m2 = hashlib.md5()
+                m2.update(v.findtext('./title'))
+                md52 = m2.hexdigest().upper()
+                if CVE:
+                    print "\t\t[" + warn + "]%s\t[%s]\t%s" % (v.findtext('./references'),
+                                                              md52,
+                                                              v.findtext('./title'))
+        # TODO Add Data to Dictionary
         if type in netsparker[target]['vulnerabilities'].keys():
             netsparker[target]['vulnerabilities'][type].update({url:{'url': url, 'severity': severity,
                                                                      'certainty': certainty}})
@@ -102,7 +121,7 @@ def parse(xml):
             netsparker[target]['vulnerabilities'][type] = {url:{'url': url, 'severity': severity,
                                                                 'certainty': certainty}}
 
-        if args.verbose:
+        if VERBOSE:
             print "\t\t[" + info + "]URL: ", url
             print "\t\t[" + info + "]Severity: ", severity
             print "\t\t[" + info + "]MD5: ",md5.upper()
@@ -112,21 +131,37 @@ def parse(xml):
 
 if __name__ == '__main__':
     try:
+
+        # Parse command line arguments
+        parser = argparse.ArgumentParser()
+        file_group = parser.add_mutually_exclusive_group(required=True)
+        file_group.add_argument('-X', '--xml', type=argparse.FileType('r'), help="Netsparker XML file")
+        file_group.add_argument('-D', '--directory', help="Parse all XML files in directory")
+        parser.add_argument('-c', '--cve', action='store_true', default=False, help="Print CVE information")
+        parser.add_argument('-m', '--md5', action='store_true', default=False, help="Print MD5 hash of vulnerability")
+        parser.add_argument('-V', '--vulns', action='store_true', default=False, help="List found vulnerabilities")
+        parser.add_argument('-v', '--verbose', action='store_true', default=False, help="Print verbose information")
+        args = parser.parse_args()
+
+        if args.verbose:
+            VERBOSE = True
+        if args.md5:
+            MD5 = True
+        if args.cve:
+            CVE = True
+        if args.vulns:
+            VULNS = True
         if args.xml:
             netsparker_xml = read_xml(args.xml)
             if netsparker_xml is not None:
                 netsparker_object = parse(netsparker_xml)
-        elif args.directory:
+        if args.directory:
             xml_files = read_directory()
             netsparker_object = {}
             if len(xml_files) > 0:
                 for f in xml_files:
                     netsparker_xml = read_xml(f)
                     netsparker_object.update(parse(netsparker_xml))
-            # print netsparker_object
-        else:
-            print "["+warn+"]No arguments provided!"
-            print "["+warn+"]Try: python " + __file__ + " --help"
     except KeyboardInterrupt:
         print "\nUser Interrupt! Quitting...."
     except:
@@ -145,3 +180,4 @@ if __name__ == '__main__':
 #           <tartet_certainty> value
 #           <target_raw_request> value
 #           <target_raw_response> value
+#           <target_CVE> list of
